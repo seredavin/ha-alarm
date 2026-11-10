@@ -100,9 +100,19 @@ const STRINGS = {
   },
 };
 
+function storedLanguage() {
+  // HA keeps the user's language in localStorage as a JSON string, e.g. "\"ru\"".
+  try {
+    const value = window.localStorage.getItem("selectedLanguage");
+    return value ? JSON.parse(value) : undefined;
+  } catch (_err) {
+    return undefined;
+  }
+}
+
 function language(hass) {
   const lang = (hass && ((hass.locale && hass.locale.language) || hass.language)) ||
-    document.documentElement.lang || navigator.language || "en";
+    storedLanguage() || navigator.language || document.documentElement.lang || "en";
   return String(lang).toLowerCase().startsWith("ru") ? "ru" : "en";
 }
 
@@ -664,7 +674,8 @@ if (!window.customCards.some((card) => card.type === CARD_TYPE)) {
   const t = STRINGS[language()];
   window.customCards.push({
     type: CARD_TYPE,
-    name: t.card_name,
+    // Both names, so the card picker search finds it whatever the UI language is.
+    name: t === STRINGS.ru ? "Будильник (Wake-up Alarm)" : "Wake-up Alarm (Будильник)",
     description: t.card_description,
     preview: true,
     documentationURL: "https://github.com/seredavin/ha-alarm#карточка",

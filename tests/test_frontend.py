@@ -27,4 +27,4 @@ async def test_card_added_to_frontend_once(hass: HomeAssistant) -> None:
         await setup_alarm(hass, title="First", enabled=False)
         await setup_alarm(hass, title="Second", enabled=False)
     add_url.assert_called_once()
-    assert add_url.call_args.args[1] == f"{CARD_URL}?v=0.2.0"
+    assert add_url.call_args.args[1] == f"{CARD_URL}?v=0.2.1"
