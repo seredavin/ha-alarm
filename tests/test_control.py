@@ -126,7 +126,8 @@ async def test_light_switched_off_stops(hass: HomeAssistant, freezer: FrozenDate
     calls = len(rec("light.turn_on"))
     await advance(hass, freezer, msk(9, 7, 1), step=10)
     assert len(rec("light.turn_on")) == calls
-    assert rec("media_player.play_media") == []
+    # Only the good morning phrase, the music never started
+    assert [c.data["media_content_type"] for c in rec("media_player.play_media")] == ["text"]
     assert rec("switch.turn_on") == []
 
 

@@ -20,8 +20,8 @@ from .const import (
     CONF_START_VOLUME,
     CONF_STOP_ON_CHANGE,
     CONF_SUN_ELEVATION,
+    CONF_WEATHER,
     DEFAULT_COVER_POSITION,
-    DEFAULT_MEDIA_ID,
     DEFAULT_MEDIA_TYPE,
     DEFAULT_START_VOLUME,
     DEFAULT_STOP_ON_CHANGE,
@@ -33,7 +33,6 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     CONF_SOURCES: [],
     CONF_COVERS: [],
     CONF_MEDIA_TYPE: DEFAULT_MEDIA_TYPE,
-    CONF_MEDIA_ID: DEFAULT_MEDIA_ID,
     CONF_START_VOLUME: DEFAULT_START_VOLUME,
     CONF_COVER_POSITION: DEFAULT_COVER_POSITION,
     CONF_SUN_ELEVATION: DEFAULT_SUN_ELEVATION,
@@ -50,7 +49,6 @@ DEVICE_FIELDS: dict[Any, Any] = {
 
 BEHAVIOUR_FIELDS: dict[Any, Any] = {
     vol.Required(CONF_MEDIA_TYPE): selector.TextSelector(),
-    vol.Required(CONF_MEDIA_ID): selector.TextSelector(),
     vol.Required(CONF_START_VOLUME): selector.NumberSelector(
         selector.NumberSelectorConfig(min=0, max=100, step=1, unit_of_measurement="%")
     ),
@@ -73,8 +71,9 @@ def _clean(data: dict[str, Any]) -> dict[str, Any]:
     data = dict(data)
     data[CONF_SOURCES] = list(data.get(CONF_SOURCES) or [])
     data[CONF_COVERS] = list(data.get(CONF_COVERS) or [])
-    if not data.get(CONF_MEDIA_PLAYER):
-        data.pop(CONF_MEDIA_PLAYER, None)
+    for key in (CONF_MEDIA_PLAYER, CONF_WEATHER):
+        if not data.get(key):
+            data.pop(key, None)
     for key in (CONF_START_VOLUME, CONF_COVER_POSITION):
         if key in data:
             data[key] = int(data[key])
@@ -100,9 +99,12 @@ class WakeupAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title=name, data={}, options=_clean({**DEFAULT_OPTIONS, **devices}))
 
         schema = vol.Schema({vol.Required(CONF_NAME): selector.TextSelector(), **DEVICE_FIELDS})
+        suggested = user_input or {}
+        if user_input is None and (weather := sorted(self.hass.states.async_entity_ids("weather"))):
+            suggested = {CONF_WEATHER: weather[0]}
         return self.async_show_form(
             step_id="user",
-            data_schema=self.add_suggested_values_to_schema(schema, user_input or {}),
+            data_schema=self.add_suggested_values_to_schema(schema, suggested),
             errors=errors,
         )
 
@@ -121,7 +123,10 @@ class WakeupAlarmOptionsFlow(OptionsFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             if _has_devices(user_input):
-                return self.async_create_entry(data=_clean(user_input))
+                data = _clean(user_input)
+                if CONF_MEDIA_ID in self.config_entry.options:
+                    data[CONF_MEDIA_ID] = self.config_entry.options[CONF_MEDIA_ID]  # kept for rollback to 0.2.x
+                return self.async_create_entry(data=data)
             errors["base"] = "no_devices"
 
         schema = vol.Schema({**DEVICE_FIELDS, **BEHAVIOUR_FIELDS})

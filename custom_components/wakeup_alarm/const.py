@@ -17,6 +17,7 @@ CONF_START_VOLUME: Final = "start_volume"
 CONF_COVER_POSITION: Final = "cover_position"
 CONF_SUN_ELEVATION: Final = "sun_elevation"
 CONF_STOP_ON_CHANGE: Final = "stop_on_change"
+CONF_WEATHER: Final = "weather"
 
 DEFAULT_MEDIA_TYPE: Final = "command"
 DEFAULT_MEDIA_ID: Final = "включи мою волну"
@@ -37,6 +38,19 @@ SET_COVER_LEAD: Final = "cover_lead"
 SET_SNOOZE: Final = "snooze_duration"
 SET_AUTO_STOP: Final = "auto_stop"
 SET_COVER_SUN_ONLY: Final = "cover_sun_only"
+SET_MEDIA_PRESET: Final = "media_preset"
+SET_MEDIA_CUSTOM: Final = "media_custom"
+SET_GREETING: Final = "greeting"
+
+PRESET_CUSTOM: Final = "custom"
+PRESET_COMMANDS: Final = {
+    "wave": "включи мою волну",
+    "playlist_of_day": "включи плейлист дня",
+    "calm": "включи спокойную музыку",
+    "nature": "включи звуки природы",
+    "radio": "включи радио",
+}
+MEDIA_PRESETS: Final = (*PRESET_COMMANDS, PRESET_CUSTOM)
 
 WEEKDAY_KEYS: Final = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
@@ -52,6 +66,9 @@ DEFAULT_SETTINGS: Final = {
     SET_SNOOZE: 9,
     SET_AUTO_STOP: 30,
     SET_COVER_SUN_ONLY: True,
+    SET_MEDIA_PRESET: "wave",
+    SET_MEDIA_CUSTOM: "",
+    SET_GREETING: True,
 }
 
 # Settings that change when the alarm fires (others only affect a run)
@@ -67,6 +84,13 @@ BRIGHTNESS_TOLERANCE: Final = 13  # ~5% of 255
 MEDIA_GRACE: Final = 15.0  # seconds after play_media before pauses count as manual
 MEDIA_DEBOUNCE: Final = 5.0  # seconds a player must stay not-playing to count as manual
 GAMMA: Final = 2.2
+
+# Cloud-only Yandex speakers turn every command into a voice request through one shared
+# scenario, so commands must be spaced out and volume kept to whole steps.
+CLOUD_VOLUME_STEP: Final = 0.1
+CLOUD_MIN_INTERVAL: Final = 10.0  # seconds between volume steps
+CLOUD_COMMAND_GAP: Final = 3.0  # seconds between consecutive commands
+GREETING_DELAY: Final = 3.0  # seconds after restoring the volume
 
 
 class AlarmState(StrEnum):

@@ -29,9 +29,10 @@ async def test_create_alarm(hass: HomeAssistant) -> None:
     assert result["title"] == "Спальня Ульяны"
     entry = result["result"]
     assert entry.options[CONF_SOURCES] == [DIMMER, PLUG]
-    assert entry.options[CONF_MEDIA_ID] == "включи мою волну"
+    assert CONF_MEDIA_ID not in entry.options
     await hass.async_block_till_done()
     assert controller(entry).settings["enabled"] is False
+    assert controller(entry).media_command == "включи мою волну"
 
 
 async def test_no_devices(hass: HomeAssistant) -> None:
@@ -61,7 +62,6 @@ async def test_options_keep_schedule(hass: HomeAssistant) -> None:
         {
             CONF_SOURCES: [PLUG],
             "media_type": "text",
-            "media_id": "Доброе утро",
             "start_volume": 10,
             "cover_position": 80,
             "sun_elevation": 2,
@@ -85,7 +85,6 @@ async def test_options_require_device(hass: HomeAssistant) -> None:
         result["flow_id"],
         {
             "media_type": "command",
-            "media_id": "x",
             "start_volume": 5,
             "cover_position": 100,
             "sun_elevation": 0,

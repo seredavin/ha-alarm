@@ -38,6 +38,18 @@ const STRINGS = {
     auto_stop: "Auto stop",
     skip_next: "Skip next",
     cover_sun_only: "Only after sunrise",
+    media_preset: "Speaker plays",
+    media_custom: "Command",
+    media_custom_placeholder: "e.g. play radio",
+    greeting: "Good morning",
+    presets: {
+      wave: "My Wave",
+      playlist_of_day: "Playlist of the day",
+      calm: "Calm music",
+      nature: "Nature sounds",
+      radio: "Radio",
+      custom: "Custom command",
+    },
     more: "More",
     stop: "Stop",
     snooze: "Snooze",
@@ -76,6 +88,18 @@ const STRINGS = {
     auto_stop: "Автостоп",
     skip_next: "Пропустить следующий",
     cover_sun_only: "Только после восхода",
+    media_preset: "Что включить",
+    media_custom: "Команда",
+    media_custom_placeholder: "например, включи радио Максимум",
+    greeting: "Доброе утро",
+    presets: {
+      wave: "Моя волна",
+      playlist_of_day: "Плейлист дня",
+      calm: "Спокойная музыка",
+      nature: "Звуки природы",
+      radio: "Радио",
+      custom: "Своя команда",
+    },
     more: "Ещё",
     stop: "Стоп",
     snooze: "Отложить",
@@ -235,6 +259,14 @@ const STYLE = `
   .row.disabled { opacity: 0.4; }
   input[type="range"] { width: 100%; margin: 0; accent-color: var(--primary-color); cursor: pointer; height: 24px; }
   .row.toggle-row { grid-template-columns: 24px 1fr auto; }
+  .row.field-row { grid-template-columns: 24px minmax(90px, 1fr) minmax(120px, 2fr); }
+  .field {
+    width: 100%; box-sizing: border-box; height: 36px; padding: 0 10px; border-radius: 10px;
+    border: 1px solid var(--divider-color, rgba(127,127,127,0.3)); background: var(--card-background-color, transparent);
+    color: var(--primary-text-color); font: inherit; font-size: 14px;
+  }
+  .field:focus { outline: 2px solid var(--primary-color); outline-offset: -1px; }
+  .field:disabled { opacity: 0.4; }
 
   details { border-top: 1px solid var(--divider-color, rgba(127,127,127,0.2)); padding-top: 6px; }
   summary {
@@ -354,6 +386,18 @@ class WakeupAlarmCard extends HTMLElement {
         <div class="sliders">
           ${MAIN_SLIDERS.map(([key, icon]) => this._sliderRow(key, icon)).join("")}
           ${this._toggleRow("cover_sun_only", "mdi:weather-sunset-up")}
+          <div class="row field-row" data-row="media_preset">
+            <ha-icon icon="mdi:music-box-multiple"></ha-icon>
+            <span class="label">${t.media_preset}</span>
+            <select class="field" data-select="media_preset" aria-label="${t.media_preset}"></select>
+          </div>
+          <div class="row field-row" data-row="media_custom">
+            <ha-icon icon="mdi:text-to-speech"></ha-icon>
+            <span class="label">${t.media_custom}</span>
+            <input class="field" type="text" data-text="media_custom" maxlength="255"
+              placeholder="${t.media_custom_placeholder}" aria-label="${t.media_custom}">
+          </div>
+          ${this._toggleRow("greeting", "mdi:account-voice")}
         </div>
         <details>
           <summary><ha-icon icon="mdi:chevron-right"></ha-icon>${t.more}</summary>
@@ -388,6 +432,17 @@ class WakeupAlarmCard extends HTMLElement {
         this._dragging = null;
         this._setNumber(key, Number(el.value));
       });
+    });
+    const preset = card.querySelector("[data-select]");
+    preset.addEventListener("change", () => {
+      this._pendingSelect = { value: preset.value, until: Date.now() + PENDING_TIMEOUT };
+      this._update();
+      this._call("select", "select_option", { entity_id: this._ids.media_preset, option: preset.value });
+    });
+    const custom = card.querySelector("[data-text]");
+    custom.addEventListener("blur", () => this._commitText());
+    custom.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") custom.blur();
     });
     const time = card.querySelector(".time");
     time.addEventListener("change", () => {
@@ -496,11 +551,49 @@ class WakeupAlarmCard extends HTMLElement {
       }
     }
 
+    this._updateMedia();
+
     const alert = ACTIVE.includes(status);
     card.querySelector(".actions").classList.toggle("alert", alert);
     card.querySelector('[data-button="stop"]').disabled = !alert || !this._available("stop");
     card.querySelector('[data-button="snooze"]').disabled = status !== "ringing" || !this._available("snooze");
     card.querySelector('[data-button="test"]').disabled = !this._available("test");
+  }
+
+  _updateMedia() {
+    const card = this._card;
+    const select = card.querySelector("[data-select]");
+    const st = this._state("media_preset");
+    let current = st ? st.state : undefined;
+    if (this._pendingSelect) {
+      if (current === this._pendingSelect.value || Date.now() > this._pendingSelect.until) this._pendingSelect = null;
+      else current = this._pendingSelect.value;
+    }
+    if (st) {
+      const options = (st.attributes && st.attributes.options) || Object.keys(this._t.presets);
+      if (select.dataset.options !== options.join(",")) {
+        select.innerHTML = options
+          .map((o) => `<option value="${o}">${this._t.presets[o] || o}</option>`)
+          .join("");
+        select.dataset.options = options.join(",");
+      }
+      if (this.shadowRoot.activeElement !== select) select.value = current;
+    }
+    select.disabled = !this._available("media_preset");
+    const customRow = card.querySelector('[data-row="media_custom"]');
+    customRow.hidden = !this._ids.media_custom || current !== "custom";
+    const input = customRow.querySelector("input");
+    const text = this._state("media_custom");
+    input.disabled = !this._available("media_custom");
+    if (text && this.shadowRoot.activeElement !== input) input.value = text.state === "unknown" ? "" : text.state;
+  }
+
+  _commitText() {
+    const input = this._card && this._card.querySelector("[data-text]");
+    const st = this._state("media_custom");
+    if (!input || !st) return;
+    const value = input.value.trim();
+    if (value !== st.state) this._call("text", "set_value", { entity_id: this._ids.media_custom, value });
   }
 
   _setValueText(key, value) {

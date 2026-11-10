@@ -8,11 +8,13 @@
           "name": "Name",
           "sources": "Light sources",
           "media_player": "Speaker",
-          "covers": "Covers"
+          "covers": "Covers",
+          "weather": "Weather"
         },
         "data_description": {
           "sources": "Lights and plugs. Dimmable ones fade in, the rest switch on at the wake time.",
-          "media_player": "Speaker that plays with rising volume (e.g. Yandex Station)."
+          "media_player": "Speaker that plays with rising volume (e.g. Yandex Station).",
+          "weather": "Used for the good morning phrase. Defaults to the first weather entity."
         }
       }
     },
@@ -30,18 +32,18 @@
           "media_player": "Speaker",
           "covers": "Covers",
           "media_type": "Media content type",
-          "media_id": "Media content",
           "start_volume": "Start volume",
           "cover_position": "Cover position",
           "sun_elevation": "Minimum sun elevation",
-          "stop_on_change": "Stop when lighting is changed"
+          "stop_on_change": "Stop when lighting is changed",
+          "weather": "Weather"
         },
         "data_description": {
           "sources": "Lights and plugs. Dimmable ones fade in, the rest switch on at the wake time.",
           "media_type": "For Yandex Station: command (voice command) or text (speech).",
-          "media_id": "E.g. \"включи мою волну\".",
           "sun_elevation": "Covers open only when the sun is at least this high.",
-          "stop_on_change": "Someone switching, turning off or dimming a light source, or stopping the speaker, means they are awake."
+          "stop_on_change": "Someone switching, turning off or dimming a light source, or stopping the speaker, means they are awake.",
+          "weather": "Used for the good morning phrase. Defaults to the first weather entity."
         }
       }
     },
@@ -80,6 +82,9 @@
       },
       "cover_sun_only": {
         "name": "Covers only after sunrise"
+      },
+      "greeting": {
+        "name": "Good morning"
       }
     },
     "time": {
@@ -131,6 +136,24 @@
           "ringing": "Ringing",
           "snoozed": "Snoozed"
         }
+      }
+    },
+    "select": {
+      "media_preset": {
+        "name": "Speaker plays",
+        "state": {
+          "wave": "My Wave",
+          "playlist_of_day": "Playlist of the day",
+          "calm": "Calm music",
+          "nature": "Nature sounds",
+          "radio": "Radio",
+          "custom": "Custom command"
+        }
+      }
+    },
+    "text": {
+      "media_custom": {
+        "name": "Custom speaker command"
       }
     }
   },

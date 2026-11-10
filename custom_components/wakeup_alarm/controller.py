@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 import logging
+import math
 from typing import Any
 
 from homeassistant.components.cover import ATTR_POSITION, CoverEntityFeature
@@ -24,6 +26,7 @@ from homeassistant.components.media_player import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    ATTR_ASSUMED_STATE,
     ATTR_ENTITY_ID,
     ATTR_SUPPORTED_FEATURES,
     STATE_OFF,
@@ -45,6 +48,9 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ACTIVE_STATES,
     BRIGHTNESS_TOLERANCE,
+    CLOUD_COMMAND_GAP,
+    CLOUD_MIN_INTERVAL,
+    CLOUD_VOLUME_STEP,
     CONF_COVER_POSITION,
     CONF_COVERS,
     CONF_MEDIA_ID,
@@ -54,6 +60,7 @@ from .const import (
     CONF_START_VOLUME,
     CONF_STOP_ON_CHANGE,
     CONF_SUN_ELEVATION,
+    CONF_WEATHER,
     DEFAULT_COVER_POSITION,
     DEFAULT_MEDIA_ID,
     DEFAULT_MEDIA_TYPE,
@@ -67,16 +74,22 @@ from .const import (
     EVENT_SNOOZED,
     EVENT_STOPPED,
     EVENT_SUNRISE_STARTED,
+    GREETING_DELAY,
     MEDIA_DEBOUNCE,
     MEDIA_GRACE,
+    PRESET_COMMANDS,
+    PRESET_CUSTOM,
     SCHEDULE_SETTINGS,
     SET_AUTO_STOP,
     SET_COVER_LEAD,
     SET_COVER_SUN_ONLY,
     SET_ENABLED,
     SET_FADE,
+    SET_GREETING,
     SET_MAX_VOLUME,
+    SET_MEDIA_CUSTOM,
     SET_MEDIA_LEAD,
+    SET_MEDIA_PRESET,
     SET_SKIP_NEXT,
     SET_SNOOZE,
     SET_WAKE_TIME,
@@ -86,12 +99,15 @@ from .const import (
     AlarmState,
     StopReason,
 )
+from .greeting import build_greeting
 from .timeline import Timeline, brightness_at, build_timeline, volume_at, wake_candidates
 
 _LOGGER = logging.getLogger(__name__)
 
 SUN_ENTITY = "sun.sun"
 NOT_PLAYING = frozenset({"paused", "idle", STATE_OFF, "standby"})
+GREETING_REASONS = frozenset({StopReason.BUTTON, StopReason.SERVICE, StopReason.MANUAL})
+FORECAST_TYPES = ("daily", "twice_daily", "hourly")
 IGNORED_STATES = frozenset({STATE_UNAVAILABLE, STATE_UNKNOWN})
 
 
@@ -135,6 +151,10 @@ class AlarmRun:
     unsubs: list[CALLBACK_TYPE] = field(default_factory=list)
     media_debounce: CALLBACK_TYPE | None = None
     ticking: bool = False
+    cloud: bool = False  # speaker reachable only through the Yandex cloud
+    player_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    last_player_command: datetime | None = None
+    volume_retry: CALLBACK_TYPE | None = None
 
 
 class AlarmController:
@@ -175,6 +195,12 @@ class AlarmController:
                 self.settings[key] = default
         if handled := data.get("handled_wake"):
             self._handled_wake = dt_util.parse_datetime(handled)
+        if SET_MEDIA_PRESET not in data:
+            # 0.2.x kept the speaker command in options ("media_id").
+            legacy = (self.options.get(CONF_MEDIA_ID) or "").strip()
+            if legacy and legacy != DEFAULT_MEDIA_ID:
+                self.settings[SET_MEDIA_PRESET] = PRESET_CUSTOM
+                self.settings[SET_MEDIA_CUSTOM] = legacy
 
     @callback
     def async_start(self) -> None:
@@ -402,6 +428,9 @@ class AlarmController:
         if run.media_debounce:
             run.media_debounce()
             run.media_debounce = None
+        if run.volume_retry:
+            run.volume_retry()
+            run.volume_retry = None
 
     @callback
     def _end_run(self, reason: StopReason | None) -> None:
@@ -411,7 +440,8 @@ class AlarmController:
             return
         self._release_run(run)
         self.run = None
-        self.hass.async_create_task(self._async_restore_media(run), eager_start=True)
+        greet = reason in GREETING_REASONS and self.settings[SET_GREETING] and bool(self.options.get(CONF_MEDIA_PLAYER))
+        self.hass.async_create_background_task(self._async_finish_media(run, greet), f"{DOMAIN} finish media")
         if reason is not None and not run.test:
             self._handled_wake = run.wake_at
             self._save()
@@ -446,8 +476,8 @@ class AlarmController:
         self.state = AlarmState.SNOOZED
         run.media_expect_playing = False
         self._cancel_media_debounce(run)
-        if run.media_started and (player := self.options.get(CONF_MEDIA_PLAYER)):
-            self.hass.async_create_task(self._call("media_player", "media_pause", player), eager_start=True)
+        if run.media_started and self.options.get(CONF_MEDIA_PLAYER):
+            self.hass.async_create_background_task(self._player_call(run, "media_pause"), f"{DOMAIN} pause")
         delay = self.settings[SET_SNOOZE] * 60 * run.scale
         run.unsubs.append(async_call_later(self.hass, delay, self._on_snooze_end))
         self._fire(EVENT_SNOOZED)
@@ -461,7 +491,7 @@ class AlarmController:
         self.state = AlarmState.RINGING
         self._fire(EVENT_RINGING)
         self._notify()
-        self.hass.async_create_task(self._async_start_media(run, self._max_volume), eager_start=True)
+        self.hass.async_create_background_task(self._async_start_media(run, self._max_volume), f"{DOMAIN} resume media")
 
     # --------------------------------------------------------------- sequence
 
@@ -527,14 +557,26 @@ class AlarmController:
             return
         volume = volume_at(timeline.media.progress(now), self._start_volume, self._max_volume)
         if not run.media_started:
-            await self._async_start_media(run, volume)
-        elif run.media_expect_playing and volume != run.last_volume:
-            run.last_volume = volume
-            await self._call("media_player", "volume_set", player, {ATTR_MEDIA_VOLUME_LEVEL: volume})
+            run.media_started = True  # the start sequence below takes a few seconds on cloud speakers
+            self.hass.async_create_background_task(self._async_start_media(run, volume), f"{DOMAIN} start media")
+        elif run.media_expect_playing:
+            await self._async_set_volume(run, volume)
 
     @property
     def _start_volume(self) -> float:
         return self.options.get(CONF_START_VOLUME, DEFAULT_START_VOLUME) / 100
+
+    @property
+    def media_command(self) -> str:
+        """Return the speaker command for the selected preset."""
+        preset = self.settings[SET_MEDIA_PRESET]
+        if preset == PRESET_CUSTOM:
+            custom = (self.settings[SET_MEDIA_CUSTOM] or "").strip()
+            if custom:
+                return custom
+            _LOGGER.warning("%s: custom speaker command is empty, playing the default", self.name)
+            return DEFAULT_MEDIA_ID
+        return PRESET_COMMANDS.get(preset, DEFAULT_MEDIA_ID)
 
     async def _async_start_media(self, run: AlarmRun, volume: float) -> None:
         player = self.options.get(CONF_MEDIA_PLAYER)
@@ -545,24 +587,62 @@ class AlarmController:
             _LOGGER.warning("%s: media player %s is unavailable", self.name, player)
             run.media_started = True  # do not retry every tick
             return
-        if not run.media_started:
+        if run.saved_volume is None and run.media_started_at is None:
             run.saved_volume = state.attributes.get(ATTR_MEDIA_VOLUME_LEVEL)
+            run.cloud = state.attributes.get(ATTR_ASSUMED_STATE) is True
+            if run.cloud:
+                _LOGGER.debug("%s: %s is a cloud-only speaker", self.name, player)
         run.media_started = True
         run.media_expect_playing = True
-        run.media_started_at = dt_util.utcnow()
-        run.last_volume = volume
-        await self._call("media_player", "volume_set", player, {ATTR_MEDIA_VOLUME_LEVEL: volume})
+        await self._async_set_volume(run, volume, force=True)
         if self.run is not run:
             return
-        await self._call(
-            "media_player",
+        await self._player_call(
+            run,
             "play_media",
-            player,
             {
                 ATTR_MEDIA_CONTENT_TYPE: self.options.get(CONF_MEDIA_TYPE, DEFAULT_MEDIA_TYPE),
-                ATTR_MEDIA_CONTENT_ID: self.options.get(CONF_MEDIA_ID, DEFAULT_MEDIA_ID),
+                ATTR_MEDIA_CONTENT_ID: self.media_command,
             },
         )
+        run.media_started_at = dt_util.utcnow()
+
+    def _cloud_volume(self, volume: float) -> float:
+        """Round up to a whole speaker step, never 0 (that would mute it)."""
+        steps = math.ceil(round(volume / CLOUD_VOLUME_STEP, 6))
+        return round(max(1, min(10, steps)) * CLOUD_VOLUME_STEP, 2)
+
+    async def _async_set_volume(self, run: AlarmRun, volume: float, force: bool = False) -> bool:
+        """Send a volume change; cloud speakers get whole steps and rate limiting.
+
+        Returns False when a cloud step had to wait for the rate limit.
+        """
+        if run.cloud:
+            volume = self._cloud_volume(volume)
+            if volume == run.last_volume:
+                return True
+            if not force and run.last_player_command is not None:
+                elapsed = (dt_util.utcnow() - run.last_player_command).total_seconds()
+                if elapsed < CLOUD_MIN_INTERVAL:
+                    return False
+        elif volume == run.last_volume:
+            return True
+        run.last_volume = volume
+        await self._player_call(run, "volume_set", {ATTR_MEDIA_VOLUME_LEVEL: volume})
+        return True
+
+    async def _player_call(self, run: AlarmRun, service: str, data: dict[str, Any] | None = None) -> None:
+        """Call the speaker one command at a time; space out commands to cloud speakers."""
+        player = self.options.get(CONF_MEDIA_PLAYER)
+        if not player:
+            return
+        async with run.player_lock:
+            if run.cloud and run.last_player_command is not None:
+                wait = CLOUD_COMMAND_GAP - (dt_util.utcnow() - run.last_player_command).total_seconds()
+                if wait > 0:
+                    await asyncio.sleep(wait)
+            await self._call("media_player", service, player, data)
+            run.last_player_command = dt_util.utcnow()
 
     async def _async_maybe_open_covers(self, run: AlarmRun) -> None:
         covers = self.options.get(CONF_COVERS) or []
@@ -622,31 +702,96 @@ class AlarmController:
             return
         if self.options.get(CONF_MEDIA_PLAYER):
             if not run.media_started:
-                await self._async_start_media(run, self._max_volume)
-            elif run.media_expect_playing and run.last_volume != self._max_volume:
-                run.last_volume = self._max_volume
-                await self._call(
-                    "media_player",
-                    "volume_set",
-                    self.options[CONF_MEDIA_PLAYER],
-                    {ATTR_MEDIA_VOLUME_LEVEL: self._max_volume},
+                run.media_started = True
+                # Cloud speakers need pauses between commands; keep them off the light/cover path.
+                self.hass.async_create_background_task(
+                    self._async_start_media(run, self._max_volume), f"{DOMAIN} start media"
                 )
+            elif run.media_expect_playing:
+                await self._async_volume_to_max(run)
         if self.run is run:
             await self._async_maybe_open_covers(run)
+
+    async def _async_volume_to_max(self, run: AlarmRun) -> None:
+        """Reach the maximum volume; a cloud speaker may have to wait for its next step."""
+        if self.run is not run or not run.media_expect_playing:
+            return
+        if await self._async_set_volume(run, self._max_volume) or run.last_player_command is None:
+            return
+        elapsed = (dt_util.utcnow() - run.last_player_command).total_seconds()
+
+        @callback
+        def retry(_now: datetime) -> None:
+            run.volume_retry = None
+            self.hass.async_create_background_task(self._async_volume_to_max(run), f"{DOMAIN} volume")
+
+        run.volume_retry = async_call_later(self.hass, max(0.5, CLOUD_MIN_INTERVAL - elapsed), retry)
 
     @callback
     def _on_auto_stop(self, _now: datetime) -> None:
         self._stop(StopReason.AUTO)
 
-    async def _async_restore_media(self, run: AlarmRun) -> None:
+    async def _async_finish_media(self, run: AlarmRun, greet: bool) -> None:
+        """Stop what the alarm played, restore the volume and optionally say good morning."""
         player = self.options.get(CONF_MEDIA_PLAYER)
-        if not player or not run.media_started:
+        if not player:
             return
-        state = self.hass.states.get(player)
-        if state is not None and state.state in (STATE_PLAYING, "paused", "buffering"):
-            await self._call("media_player", "media_stop", player)
+        if run.media_started:
+            state = self.hass.states.get(player)
+            # A cloud speaker's state is not reliable, so always ask it to stop.
+            if run.cloud or (state is not None and state.state in (STATE_PLAYING, "paused", "buffering")):
+                await self._player_call(run, "media_stop")
         if run.saved_volume is not None:
-            await self._call("media_player", "volume_set", player, {ATTR_MEDIA_VOLUME_LEVEL: run.saved_volume})
+            await self._player_call(run, "volume_set", {ATTR_MEDIA_VOLUME_LEVEL: run.saved_volume})
+        elif greet:
+            await self._player_call(run, "volume_set", {ATTR_MEDIA_VOLUME_LEVEL: self._max_volume})
+        if not greet:
+            return
+        await asyncio.sleep(GREETING_DELAY)
+        phrase = await self._async_greeting_phrase()
+        _LOGGER.debug("%s: greeting: %s", self.name, phrase)
+        await self._player_call(run, "play_media", {ATTR_MEDIA_CONTENT_TYPE: "text", ATTR_MEDIA_CONTENT_ID: phrase})
+
+    def _weather_entity(self) -> str | None:
+        if configured := self.options.get(CONF_WEATHER):
+            return configured
+        return next(iter(sorted(self.hass.states.async_entity_ids("weather"))), None)
+
+    async def _async_greeting_phrase(self) -> str:
+        entity_id = self._weather_entity()
+        state = self.hass.states.get(entity_id) if entity_id else None
+        if state is None or state.state in IGNORED_STATES:
+            return build_greeting(None, None, None)
+        return build_greeting(state.state, state.attributes.get("temperature"), await self._async_today_high(entity_id))
+
+    async def _async_today_high(self, entity_id: str) -> float | None:
+        """Return today's maximum temperature from the forecast, if any."""
+        today = dt_util.now().date()
+        for forecast_type in FORECAST_TYPES:
+            try:
+                response = await self.hass.services.async_call(
+                    "weather",
+                    "get_forecasts",
+                    {ATTR_ENTITY_ID: entity_id, "type": forecast_type},
+                    blocking=True,
+                    return_response=True,
+                )
+            except Exception:  # noqa: BLE001 - unsupported type or broken weather entity
+                continue
+            forecast = ((response or {}).get(entity_id) or {}).get("forecast") or []
+            entries = []
+            for item in forecast:
+                moment = dt_util.parse_datetime(str(item.get("datetime", "")))
+                if item.get("temperature") is None or moment is None:
+                    continue
+                entries.append((dt_util.as_local(moment).date(), item["temperature"]))
+            if not entries:
+                continue
+            todays = [temp for day, temp in entries if day == today]
+            if forecast_type == "hourly":
+                return max(todays) if todays else None
+            return todays[0] if todays else entries[0][1]
+        return None
 
     # ------------------------------------------------------- change detection
 
@@ -698,6 +843,8 @@ class AlarmController:
 
     @callback
     def _check_media_change(self, run: AlarmRun, old: State, new: State) -> None:
+        if run.cloud:
+            return  # a cloud speaker's state does not reflect what it plays
         if new.state == STATE_PLAYING:
             self._cancel_media_debounce(run)
             return

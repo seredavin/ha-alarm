@@ -14,7 +14,15 @@ from .card import async_register_card, async_unregister_card_resource
 from .const import ATTR_DURATION, DOMAIN, SERVICE_SNOOZE, SERVICE_STOP, SERVICE_TRIGGER, StopReason
 from .controller import AlarmController
 
-PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, Platform.SWITCH, Platform.TIME]
+PLATFORMS = [
+    Platform.BUTTON,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.TEXT,
+    Platform.TIME,
+]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
