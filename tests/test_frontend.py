@@ -17,7 +17,7 @@ async def test_card_is_served(hass: HomeAssistant, hass_client) -> None:
     response = await client.get(CARD_URL)
     assert response.status == 200
     body = await response.text()
-    assert "customElements.define(CARD_TYPE" in body
+    assert "registry.define(CARD_TYPE" in body
     assert "wakeup-alarm-card-editor" in body
 
 
@@ -27,7 +27,7 @@ async def test_card_added_to_frontend_once(hass: HomeAssistant) -> None:
         await setup_alarm(hass, title="First", enabled=False)
         await setup_alarm(hass, title="Second", enabled=False)
     add_url.assert_called_once()
-    assert add_url.call_args.args[1] == f"{CARD_URL}?v=0.3.0"
+    assert add_url.call_args.args[1] == f"{CARD_URL}?v=0.3.1"
 
 
 async def _resources(hass: HomeAssistant):
@@ -41,9 +41,13 @@ async def _resources(hass: HomeAssistant):
 
 async def test_card_registered_as_lovelace_resource(hass: HomeAssistant) -> None:
     resources = await _resources(hass)
-    await setup_alarm(hass, enabled=False)
+    hass.config.components.add("frontend")
+    with patch("homeassistant.components.frontend.add_extra_js_url") as add_url:
+        await setup_alarm(hass, enabled=False)
+    # Not also as an early extra module: that races the core's registry swap
+    add_url.assert_not_called()
     urls = [item["url"] for item in resources.async_items()]
-    assert urls == [f"{CARD_URL}?v=0.3.0"]
+    assert urls == [f"{CARD_URL}?v=0.3.1"]
     assert resources.async_items()[0]["type"] == "module"
 
 
@@ -53,7 +57,7 @@ async def test_resource_updated_to_new_version(hass: HomeAssistant) -> None:
     await resources.async_create_item({"res_type": "module", "url": "/local/other.js"})
     await setup_alarm(hass, enabled=False)
     urls = sorted(item["url"] for item in resources.async_items())
-    assert urls == ["/local/other.js", f"{CARD_URL}?v=0.3.0"]
+    assert urls == ["/local/other.js", f"{CARD_URL}?v=0.3.1"]
 
 
 async def test_resource_removed_with_last_alarm(hass: HomeAssistant) -> None:

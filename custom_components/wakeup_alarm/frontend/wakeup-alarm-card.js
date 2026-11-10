@@ -759,18 +759,36 @@ class WakeupAlarmCardEditor extends HTMLElement {
   }
 }
 
-if (!customElements.get(CARD_TYPE)) customElements.define(CARD_TYPE, WakeupAlarmCard);
-if (!customElements.get(EDITOR_TYPE)) customElements.define(EDITOR_TYPE, WakeupAlarmCardEditor);
+function register() {
+  // Always go through window.customElements: HA replaces it with its own registry.
+  const registry = window.customElements;
+  if (!registry.get(CARD_TYPE)) registry.define(CARD_TYPE, WakeupAlarmCard);
+  if (!registry.get(EDITOR_TYPE)) registry.define(EDITOR_TYPE, WakeupAlarmCardEditor);
+  window.customCards = window.customCards || [];
+  if (!window.customCards.some((card) => card.type === CARD_TYPE)) {
+    const t = STRINGS[language()];
+    window.customCards.push({
+      type: CARD_TYPE,
+      // Both names, so the card picker search finds it whatever the UI language is.
+      name: t === STRINGS.ru ? "Будильник (Wake-up Alarm)" : "Wake-up Alarm (Будильник)",
+      description: t.card_description,
+      preview: true,
+      documentationURL: "https://github.com/seredavin/ha-alarm#карточка",
+    });
+  }
+}
 
-window.customCards = window.customCards || [];
-if (!window.customCards.some((card) => card.type === CARD_TYPE)) {
-  const t = STRINGS[language()];
-  window.customCards.push({
-    type: CARD_TYPE,
-    // Both names, so the card picker search finds it whatever the UI language is.
-    name: t === STRINGS.ru ? "Будильник (Wake-up Alarm)" : "Wake-up Alarm (Будильник)",
-    description: t.card_description,
-    preview: true,
-    documentationURL: "https://github.com/seredavin/ha-alarm#карточка",
-  });
+// HA's core bundle swaps window.customElements for a scoped registry polyfill. An element
+// defined before that is invisible to the new registry, and Lovelace then shows
+// "Configuration error" forever. So wait until the core has defined ha-card.
+if (window.customElements.get("ha-card")) {
+  register();
+} else {
+  const started = Date.now();
+  const timer = setInterval(() => {
+    if (window.customElements.get("ha-card") || Date.now() - started > 60000) {
+      clearInterval(timer);
+      register();
+    }
+  }, 50);
 }

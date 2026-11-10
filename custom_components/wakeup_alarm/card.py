@@ -24,10 +24,10 @@ LOVELACE_DOMAIN = "lovelace"
 async def async_register_card(hass: HomeAssistant) -> None:
     """Serve the card and load it in the frontend (once per process).
 
-    The card is added both as an extra frontend module and as a Lovelace resource
-    with the same URL (the browser imports it once). Extra modules only come from
-    index.html, which a service worker may serve from cache without the card;
-    Lovelace resources are fetched by every dashboard on load.
+    Preferably as a Lovelace resource: dashboards fetch those on every load and import
+    them after the HA core. An extra frontend module is only the fallback for YAML-managed
+    resources: it is imported from index.html in parallel with the core, which may then
+    replace the custom element registry and lose the card (see the card's register()).
     """
     if hass.data.get(DATA_CARD_REGISTERED):
         return
@@ -35,12 +35,13 @@ async def async_register_card(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths([StaticPathConfig(CARD_URL, str(CARD_PATH), False)])
     integration = await async_get_integration(hass, DOMAIN)
     url = f"{CARD_URL}?v={integration.version}"
+    if await _async_sync_resource(hass, url):
+        return
     if "frontend" in hass.config.components:
         # frontend is optional (after_dependency), so import it only when loaded
         from homeassistant.components.frontend import add_extra_js_url
 
         add_extra_js_url(hass, url)
-    await _async_sync_resource(hass, url)
 
 
 def _storage_resources(hass: HomeAssistant) -> Any | None:
@@ -52,21 +53,23 @@ def _storage_resources(hass: HomeAssistant) -> Any | None:
     return resources
 
 
-async def _async_sync_resource(hass: HomeAssistant, url: str) -> None:
-    """Create or update our Lovelace resource so it points at the current version."""
+async def _async_sync_resource(hass: HomeAssistant, url: str) -> bool:
+    """Create or update our Lovelace resource; return False if resources are not UI-managed."""
     resources = _storage_resources(hass)
     if resources is None:
-        return
+        return False
     try:
         await resources.async_get_info()  # loads the collection from storage
         for item in resources.async_items():
             if item["url"].split("?", 1)[0] == CARD_URL:
                 if item["url"] != url:
                     await resources.async_update_item(item["id"], {"res_type": "module", "url": url})
-                return
+                return True
         await resources.async_create_item({"res_type": "module", "url": url})
-    except Exception:  # the extra module still loads the card
+    except Exception:
         _LOGGER.warning("Could not register the card as a Lovelace resource", exc_info=True)
+        return False
+    return True
 
 
 async def async_unregister_card_resource(hass: HomeAssistant) -> None:

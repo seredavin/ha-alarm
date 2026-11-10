@@ -23,15 +23,17 @@
 
 ## Decisions
 
-### 1. Доставка: статический путь + extra module + ресурс Lovelace
+### 1. Доставка: ресурс Lovelace, extra module только как запасной вариант
 В `async_setup` интеграции один раз на процесс (флаг в `hass.data`):
 - `hass.http.async_register_static_paths([StaticPathConfig("/wakeup_alarm/wakeup-alarm-card.js", <path>, cache_headers=False)])`;
-- `frontend.add_extra_js_url(hass, url)`, если загружен `frontend`;
-- если ресурсы Lovelace в storage-режиме — запись `module` с тем же `url` в коллекции ресурсов: создаётся, при смене версии обновляется, удаляется вместе с последним будильником.
+- если ресурсы Lovelace в storage-режиме — запись `module` с `url` в коллекции ресурсов: создаётся, при смене версии обновляется, удаляется вместе с последним будильником. `add_extra_js_url` в этом случае **не** вызывается;
+- если ресурсы в YAML-режиме — `frontend.add_extra_js_url(hass, url)`.
 
-`url` = `/wakeup_alarm/wakeup-alarm-card.js?v=<версия>`. Браузер импортирует модуль по одному URL один раз, поэтому двойной загрузки нет.
-- *Почему не только `add_extra_js_url`.* Проверено на проде: фронтенд HA подключает extra modules только из `index.html` и не подписывается на их изменения. Service worker и приложение могут отдать `index.html` из кэша, сохранённый до установки карточки, либо страница может загрузиться во время рестарта HA до загрузки интеграции. Тогда карточка не определяется, и вместо неё «Ошибка конфигурации» до полной перезагрузки. Ресурсы Lovelace дашборд запрашивает по websocket при каждом открытии.
-- *Почему не только ресурс.* В YAML-режиме ресурсов коллекция недоступна для записи, там остаётся extra module.
+`url` = `/wakeup_alarm/wakeup-alarm-card.js?v=<версия>`.
+
+**Почему так (найдено на проде через Playwright).** Ядро фронтенда HA при загрузке заменяет `window.customElements` полифиллом scoped registry. Extra modules импортируются из `index.html` параллельно с ядром. На медленной сети или без кэша (телефон) карточка успевала зарегистрироваться в родном реестре до подмены. Новый реестр её не видел (`customElements.get()` → `undefined`, хотя `document.createElement` создавал нашу карточку), и Lovelace навсегда оставлял «Ошибку конфигурации». Ресурсы Lovelace импортируются после ядра.
+
+Дополнительно скрипт карточки регистрирует элементы функцией `register()` через `window.customElements` только после того, как ядро определило `ha-card`: опрос каждые 50 мс, максимум 60 с. Это защищает YAML-режим и любые ранние загрузки.
 - В `manifest.json`: `dependencies: ["http"]`, `after_dependencies: ["frontend", "lovelace", "sun"]`.
 
 ### 2. Ванильный Web Component, без Lit
