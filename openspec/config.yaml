@@ -1,0 +1,18 @@
+schema: spec-driven
+
+context: |
+  Проект: кастомная интеграция Home Assistant «Будильник с рассветом» (domain `wakeup_alarm`),
+  распространяется через HACS (custom repository github.com/seredavin/ha-alarm).
+  Стек: Python 3.13, Home Assistant >= 2025.1 (целевой прод: 2026.10, Docker),
+  pytest + pytest-homeassistant-custom-component, ruff.
+  Настройка только через UI (config flow + options flow), без YAML.
+  Целевое окружение: Яндекс Станции через интеграцию yandex_station (AlexxIT),
+  свет WB/Zigbee через MQTT, шторы cover через MQTT, часовой пояс Europe/Moscow.
+  Язык артефактов OpenSpec и переводов UI: русский (+ английский перевод UI).
+  Нормативные ключевые слова в спеках — SHALL/MUST латиницей.
+
+rules:
+  specs:
+    - Требования формулировать на русском, ключевое слово SHALL/MUST оставлять латиницей
+  tasks:
+    - Каждая задача проверяема и укладывается в одну сессию

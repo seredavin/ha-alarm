@@ -1,0 +1,19 @@
+stop:
+  target:
+    entity:
+      integration: wakeup_alarm
+snooze:
+  target:
+    entity:
+      integration: wakeup_alarm
+trigger:
+  target:
+    entity:
+      integration: wakeup_alarm
+  fields:
+    duration:
+      selector:
+        number:
+          min: 1
+          max: 7200
+          unit_of_measurement: s

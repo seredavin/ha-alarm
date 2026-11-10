@@ -1,0 +1,154 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "New wake-up alarm",
+        "description": "One alarm per room. Dimmable lights fade in before the wake time, other lights and plugs switch on at the wake time.",
+        "data": {
+          "name": "Name",
+          "sources": "Light sources",
+          "media_player": "Speaker",
+          "covers": "Covers"
+        },
+        "data_description": {
+          "sources": "Lights and plugs. Dimmable ones fade in, the rest switch on at the wake time.",
+          "media_player": "Speaker that plays with rising volume (e.g. Yandex Station)."
+        }
+      }
+    },
+    "error": {
+      "name_exists": "An alarm with this name already exists",
+      "no_devices": "Select at least one device"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Alarm settings",
+        "data": {
+          "sources": "Light sources",
+          "media_player": "Speaker",
+          "covers": "Covers",
+          "media_type": "Media content type",
+          "media_id": "Media content",
+          "start_volume": "Start volume",
+          "cover_position": "Cover position",
+          "sun_elevation": "Minimum sun elevation",
+          "stop_on_change": "Stop when lighting is changed"
+        },
+        "data_description": {
+          "sources": "Lights and plugs. Dimmable ones fade in, the rest switch on at the wake time.",
+          "media_type": "For Yandex Station: command (voice command) or text (speech).",
+          "media_id": "E.g. \"включи мою волну\".",
+          "sun_elevation": "Covers open only when the sun is at least this high.",
+          "stop_on_change": "Someone switching, turning off or dimming a light source, or stopping the speaker, means they are awake."
+        }
+      }
+    },
+    "error": {
+      "no_devices": "Select at least one device"
+    }
+  },
+  "entity": {
+    "switch": {
+      "enabled": {
+        "name": "Enabled"
+      },
+      "skip_next": {
+        "name": "Skip next"
+      },
+      "weekday_mon": {
+        "name": "Monday"
+      },
+      "weekday_tue": {
+        "name": "Tuesday"
+      },
+      "weekday_wed": {
+        "name": "Wednesday"
+      },
+      "weekday_thu": {
+        "name": "Thursday"
+      },
+      "weekday_fri": {
+        "name": "Friday"
+      },
+      "weekday_sat": {
+        "name": "Saturday"
+      },
+      "weekday_sun": {
+        "name": "Sunday"
+      }
+    },
+    "time": {
+      "wake_time": {
+        "name": "Wake time"
+      }
+    },
+    "number": {
+      "fade_duration": {
+        "name": "Sunrise duration"
+      },
+      "media_lead": {
+        "name": "Start speaker before"
+      },
+      "max_volume": {
+        "name": "Maximum volume"
+      },
+      "cover_lead": {
+        "name": "Open covers before"
+      },
+      "snooze_duration": {
+        "name": "Snooze for"
+      },
+      "auto_stop": {
+        "name": "Auto stop after"
+      }
+    },
+    "button": {
+      "stop": {
+        "name": "Stop"
+      },
+      "snooze": {
+        "name": "Snooze"
+      },
+      "test": {
+        "name": "Test"
+      }
+    },
+    "sensor": {
+      "next_wake": {
+        "name": "Next wake"
+      },
+      "status": {
+        "name": "State",
+        "state": {
+          "off": "Off",
+          "scheduled": "Scheduled",
+          "sunrise": "Sunrise",
+          "ringing": "Ringing",
+          "snoozed": "Snoozed"
+        }
+      }
+    }
+  },
+  "services": {
+    "stop": {
+      "name": "Stop",
+      "description": "Stop a running alarm."
+    },
+    "snooze": {
+      "name": "Snooze",
+      "description": "Snooze a ringing alarm."
+    },
+    "trigger": {
+      "name": "Test",
+      "description": "Run the wake-up sequence now.",
+      "fields": {
+        "duration": {
+          "name": "Duration",
+          "description": "Compress the whole sequence into this many seconds."
+        }
+      }
+    }
+  }
+}

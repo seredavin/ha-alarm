@@ -1,0 +1,17 @@
+{
+  "domain": "wakeup_alarm",
+  "name": "Wake-up Alarm",
+  "after_dependencies": [
+    "sun"
+  ],
+  "codeowners": [
+    "@seredavin"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/seredavin/ha-alarm",
+  "integration_type": "helper",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/seredavin/ha-alarm/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
