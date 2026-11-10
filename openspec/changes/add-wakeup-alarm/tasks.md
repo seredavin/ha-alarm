@@ -45,7 +45,7 @@
 
 - [x] 6.1 `.github/workflows/validate.yml`: hassfest + HACS action; `.github/workflows/tests.yml`: ruff + pytest
 - [ ] 6.2 Первый коммит, push в `main`, проверка, что CI зелёный
-- [ ] 6.3 Тег `v0.1.0` и GitHub Release
+- [x] 6.3 GitHub Release (первым вышел сразу `v0.3.1`, отдельных тегов v0.1.0/v0.2.0 не было)
 
 ## 7. Развёртывание на проде
 
