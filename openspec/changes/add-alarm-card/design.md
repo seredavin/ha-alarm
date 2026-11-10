@@ -23,14 +23,16 @@
 
 ## Decisions
 
-### 1. Доставка: статический путь + `add_extra_js_url`
-В `async_setup` интеграции:
+### 1. Доставка: статический путь + extra module + ресурс Lovelace
+В `async_setup` интеграции один раз на процесс (флаг в `hass.data`):
 - `hass.http.async_register_static_paths([StaticPathConfig("/wakeup_alarm/wakeup-alarm-card.js", <path>, cache_headers=False)])`;
-- `frontend.add_extra_js_url(hass, "/wakeup_alarm/wakeup-alarm-card.js?v=<version>")`.
+- `frontend.add_extra_js_url(hass, url)`, если загружен `frontend`;
+- если ресурсы Lovelace в storage-режиме — запись `module` с тем же `url` в коллекции ресурсов: создаётся, при смене версии обновляется, удаляется вместе с последним будильником.
 
-Регистрация выполняется один раз на процесс, флаг хранится в `hass.data[DOMAIN]`. `async_setup` вызывается и без записей, но регистрировать модуль, когда будильников нет, тоже безвредно. В `manifest.json` добавляются `dependencies: ["frontend", "http"]`.
-- *Альтернатива — запись в `lovelace_resources`.* Не работает в YAML-режиме Lovelace, требует прав администратора и миграций. `add_extra_js_url` подгружает модуль на любой странице, включая предпросмотр редактора.
-- *Версия.* Берётся из `async_get_integration(hass, DOMAIN).version`. Query-параметр `?v=` сбрасывает кэш браузера после обновления.
+`url` = `/wakeup_alarm/wakeup-alarm-card.js?v=<версия>`. Браузер импортирует модуль по одному URL один раз, поэтому двойной загрузки нет.
+- *Почему не только `add_extra_js_url`.* Проверено на проде: фронтенд HA подключает extra modules только из `index.html` и не подписывается на их изменения. Service worker и приложение могут отдать `index.html` из кэша, сохранённый до установки карточки, либо страница может загрузиться во время рестарта HA до загрузки интеграции. Тогда карточка не определяется, и вместо неё «Ошибка конфигурации» до полной перезагрузки. Ресурсы Lovelace дашборд запрашивает по websocket при каждом открытии.
+- *Почему не только ресурс.* В YAML-режиме ресурсов коллекция недоступна для записи, там остаётся extra module.
+- В `manifest.json`: `dependencies: ["http"]`, `after_dependencies: ["frontend", "lovelace", "sun"]`.
 
 ### 2. Ванильный Web Component, без Lit
 Внутренние ссылки фронтенда HA на Lit не являются публичным API, а трюк `customElements.get("hui-masonry-view")` ненадёжен. Карточка — `class WakeupAlarmCard extends HTMLElement` с Shadow DOM:

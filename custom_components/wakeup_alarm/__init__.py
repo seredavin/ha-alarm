@@ -10,7 +10,7 @@ from homeassistant.helpers.service import async_extract_config_entry_ids
 from homeassistant.helpers.typing import ConfigType
 import voluptuous as vol
 
-from .card import async_register_card
+from .card import async_register_card, async_unregister_card_resource
 from .const import ATTR_DURATION, DOMAIN, SERVICE_SNOOZE, SERVICE_STOP, SERVICE_TRIGGER, StopReason
 from .controller import AlarmController
 
@@ -83,3 +83,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: WakeupAlarmConfigEntry)
 async def async_remove_entry(hass: HomeAssistant, entry: WakeupAlarmConfigEntry) -> None:
     """Delete persisted settings when the alarm is removed."""
     await AlarmController(hass, entry).async_remove_store()
+    if not [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]:
+        await async_unregister_card_resource(hass)
