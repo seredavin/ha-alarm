@@ -21,6 +21,7 @@ from .common import (
     STATION,
     advance,
     controller,
+    entity_id,
     msk,
     setup_alarm,
     setup_world,
@@ -169,3 +170,25 @@ async def test_change_fade_on_the_fly(hass: HomeAssistant, freezer: FrozenDateTi
     assert rec("light.turn_on") == []
     await advance(hass, freezer, msk(9, 6, 35, 2))
     assert rec.brightness() == [1]
+
+
+async def test_covers_regardless_of_sun_when_option_off(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    rec = await setup_world(hass, freezer, msk(9, 6, 0))
+    hass.states.async_set("sun.sun", "below_horizon", {"elevation": -12.0})
+    entry = await setup_alarm(hass)
+    controller(entry).set_setting("cover_sun_only", False)
+    await advance(hass, freezer, msk(9, 6, 44, 58), step=60)
+    assert rec("cover.set_cover_position") == []
+    await advance(hass, freezer, msk(9, 6, 45, 2))
+    assert [c.data["position"] for c in rec("cover.set_cover_position", COVER)] == [100]
+    await advance(hass, freezer, msk(9, 7, 1), step=10)
+    assert len(rec("cover.set_cover_position")) == 1
+
+
+async def test_sun_only_switch_entity(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    await setup_world(hass, freezer, msk(9, 6, 0))
+    entry = await setup_alarm(hass)
+    switch = entity_id(hass, entry, "switch", "cover_sun_only")
+    assert hass.states.get(switch).state == "on"
+    await hass.services.async_call("switch", "turn_off", {"entity_id": switch}, blocking=True)
+    assert controller(entry).settings["cover_sun_only"] is False

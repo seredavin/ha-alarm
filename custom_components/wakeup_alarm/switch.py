@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import WakeupAlarmConfigEntry
-from .const import SET_ENABLED, SET_SKIP_NEXT, SET_WEEKDAYS, WEEKDAY_KEYS
+from .const import SET_COVER_SUN_ONLY, SET_ENABLED, SET_SKIP_NEXT, SET_WEEKDAYS, WEEKDAY_KEYS
 from .controller import AlarmController
 from .entity import AlarmEntity
 
@@ -24,6 +24,7 @@ async def async_setup_entry(
     entities: list[SwitchEntity] = [
         SettingSwitch(controller, SET_ENABLED),
         SettingSwitch(controller, SET_SKIP_NEXT),
+        SettingSwitch(controller, SET_COVER_SUN_ONLY),
     ]
     entities += [WeekdaySwitch(controller, index) for index in range(7)]
     async_add_entities(entities)
@@ -37,6 +38,8 @@ class SettingSwitch(AlarmEntity, SwitchEntity):
         self._key = key
         if key == SET_ENABLED:
             self._attr_icon = "mdi:alarm"
+        elif key == SET_COVER_SUN_ONLY:
+            self._attr_icon = "mdi:weather-sunset-up"
 
     @property
     def is_on(self) -> bool:

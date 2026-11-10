@@ -10,6 +10,7 @@ from homeassistant.helpers.service import async_extract_config_entry_ids
 from homeassistant.helpers.typing import ConfigType
 import voluptuous as vol
 
+from .card import async_register_card
 from .const import ATTR_DURATION, DOMAIN, SERVICE_SNOOZE, SERVICE_STOP, SERVICE_TRIGGER, StopReason
 from .controller import AlarmController
 
@@ -26,7 +27,7 @@ TRIGGER_SCHEMA = TARGET_SCHEMA.extend(
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register services."""
+    """Register services and the dashboard card."""
 
     async def controllers(call: ServiceCall) -> list[AlarmController]:
         result = []
@@ -51,6 +52,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, SERVICE_STOP, handle_stop, TARGET_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_SNOOZE, handle_snooze, TARGET_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_TRIGGER, handle_trigger, TRIGGER_SCHEMA)
+    await async_register_card(hass)
     return True
 
 

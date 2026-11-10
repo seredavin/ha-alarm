@@ -36,6 +36,7 @@ SET_MAX_VOLUME: Final = "max_volume"
 SET_COVER_LEAD: Final = "cover_lead"
 SET_SNOOZE: Final = "snooze_duration"
 SET_AUTO_STOP: Final = "auto_stop"
+SET_COVER_SUN_ONLY: Final = "cover_sun_only"
 
 WEEKDAY_KEYS: Final = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
@@ -50,6 +51,7 @@ DEFAULT_SETTINGS: Final = {
     SET_COVER_LEAD: 15,
     SET_SNOOZE: 9,
     SET_AUTO_STOP: 30,
+    SET_COVER_SUN_ONLY: True,
 }
 
 # Settings that change when the alarm fires (others only affect a run)

@@ -72,6 +72,7 @@ from .const import (
     SCHEDULE_SETTINGS,
     SET_AUTO_STOP,
     SET_COVER_LEAD,
+    SET_COVER_SUN_ONLY,
     SET_ENABLED,
     SET_FADE,
     SET_MAX_VOLUME,
@@ -567,11 +568,12 @@ class AlarmController:
         covers = self.options.get(CONF_COVERS) or []
         if not covers or run.cover_opened:
             return
-        sun = self.hass.states.get(SUN_ENTITY)
-        elevation = sun.attributes.get("elevation") if sun else None
-        threshold = self.options.get(CONF_SUN_ELEVATION, DEFAULT_SUN_ELEVATION)
-        if elevation is None or elevation < threshold:
-            return
+        if self.settings[SET_COVER_SUN_ONLY]:
+            sun = self.hass.states.get(SUN_ENTITY)
+            elevation = sun.attributes.get("elevation") if sun else None
+            threshold = self.options.get(CONF_SUN_ELEVATION, DEFAULT_SUN_ELEVATION)
+            if elevation is None or elevation < threshold:
+                return
         run.cover_opened = True
         position = int(self.options.get(CONF_COVER_POSITION, DEFAULT_COVER_POSITION))
         for cover in covers:
