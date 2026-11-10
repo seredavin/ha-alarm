@@ -546,9 +546,9 @@ class WakeupAlarmCard extends HTMLElement {
   // ------------------------------------------------------------ formatting
 
   _timeZone() {
-    const tz = this._hass.config && this._hass.config.time_zone;
-    const setting = this._hass.locale && this._hass.locale.time_zone;
-    return setting === "local" ? undefined : tz;
+    // The wake time is server-local, so the next wake is shown in the server time zone too,
+    // regardless of the user's "local time" profile setting.
+    return (this._hass.config && this._hass.config.time_zone) || undefined;
   }
 
   _hourCycle() {
